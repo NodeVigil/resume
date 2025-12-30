@@ -1,0 +1,93 @@
+name: Compile LaTeX Resumes
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:  # Allows manual trigger
+
+permissions:
+  contents: write  # Required for committing PDFs back to repo
+  
+jobs:
+  compile-resumes:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for proper commits
+      
+      - name: Compile LaTeX documents
+        uses: xu-cheng/latex-action@v3
+        with:
+          working_directory: resumes
+          root_file: |
+            frontend/main.tex
+            backend/main.tex
+            fullstack/main.tex
+          args: -pdf -file-line-error -halt-on-error -interaction=nonstopmode
+          compiler: latexmk
+          
+      - name: Organize PDFs
+        run: |
+          cd resumes
+          # Move PDFs to their respective directories with descriptive names
+          mv frontend/main.pdf frontend/frontend-resume.pdf
+          mv backend/main.pdf backend/backend-resume.pdf
+          mv fullstack/main.pdf fullstack/fullstack-resume.pdf
+          
+      - name: Upload PDFs as artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: compiled-resumes
+          path: |
+            resumes/frontend/frontend-resume.pdf
+            resumes/backend/backend-resume.pdf
+            resumes/fullstack/fullstack-resume.pdf
+          retention-days: 90
+          
+      - name: Commit and push PDFs to repository
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add resumes/frontend/frontend-resume.pdf
+          git add resumes/backend/backend-resume.pdf
+          git add resumes/fullstack/fullstack-resume.pdf
+          
+          # Only commit if there are changes
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Auto-update compiled resume PDFs [skip ci]"
+            git push
+          fi
+          
+      - name: Get current date
+        id: date
+        run: echo "date=$(date +'%Y-%m-%d-%H%M')" >> $GITHUB_OUTPUT
+        
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: release-${{ steps.date.outputs.date }}
+          name: Resume Compilation - ${{ steps.date.outputs.date }}
+          body: |
+            Automatically compiled resumes from commit ${{ github.sha }}
+            
+            **Changes in this build:**
+            ${{ github.event.head_commit.message }}
+            
+            Download the PDFs below:
+            - Frontend Resume
+            - Backend Resume  
+            - Fullstack Resume
+          files: |
+            resumes/frontend/frontend-resume.pdf
+            resumes/backend/backend-resume.pdf
+            resumes/fullstack/fullstack-resume.pdf
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
