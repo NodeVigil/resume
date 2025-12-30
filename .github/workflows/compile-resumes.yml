@@ -103,20 +103,24 @@ jobs:
           
       - name: Get current date
         id: date
-        run: echo "date=$(date +'%Y-%m-%d-%H%M')" >> $GITHUB_OUTPUT
+        run: echo "date=$(date +'%Y-%m-%d %H:%M')" >> $GITHUB_OUTPUT
         
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: release-${{ steps.date.outputs.date }}
-          name: Resume Compilation - ${{ steps.date.outputs.date }}
+          tag_name: v${{ github.run_number }}
+          name: Resume Build v${{ github.run_number }}
           body: |
-            Automatically compiled resumes from commit ${{ github.sha }}
+            🎓 **Automated Resume Compilation**
             
-            **Changes in this build:**
+            **Build:** #${{ github.run_number }}
+            **Date:** ${{ steps.date.outputs.date }}
+            **Commit:** ${{ github.sha }}
+            
+            **Changes:**
             ${{ github.event.head_commit.message }}
             
-            **Compiled resumes:**
+            **📄 Compiled resumes:**
             ${{ steps.find_dirs.outputs.dirs }}
           files: |
             */*-resume.pdf
