@@ -1,0 +1,126 @@
+name: Update README
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-readme:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          
+      - name: Find resume directories and generate README
+        run: |
+          # Find all directories with main.tex
+          RESUME_DIRS=$(find . -maxdepth 1 -type d -name "*" ! -name "." ! -name ".." ! -name ".git" ! -name "common" ! -name ".github" -exec test -f "{}/main.tex" \; -print | sed 's|./||' | sort)
+          
+          # Get latest release info
+          LATEST_RELEASE=$(curl -s "https://api.github.com/repos/${{ github.repository }}/releases/latest" | jq -r '.tag_name // "v1"')
+          REPO_URL="https://github.com/${{ github.repository }}"
+          
+          # Start generating README
+          cat > README.md << 'EOF'
+          # 📄 Resume Collection
+          
+          This repository contains my professional resumes, automatically compiled using GitHub Actions.
+          
+          ## 🚀 Available Resumes
+          
+          EOF
+          
+          # Add dynamic download links for each resume
+          for dir in $RESUME_DIRS; do
+            RESUME_NAME=$(echo "$dir" | sed 's/-/ /g' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) tolower(substr($i,2));}1')
+            PDF_NAME="${dir}-resume.pdf"
+            
+            cat >> README.md << EOF
+          ### 📌 ${RESUME_NAME} Resume
+          
+          [![Download PDF](https://img.shields.io/badge/Download-PDF-red?style=for-the-badge&logo=adobe-acrobat-reader)](${REPO_URL}/releases/latest/download/${PDF_NAME})
+          [![View Source](https://img.shields.io/badge/View-Source-blue?style=for-the-badge&logo=latex)](./${dir}/main.tex)
+          
+          EOF
+          done
+          
+          # Add footer with build info
+          cat >> README.md << EOF
+          ---
+          
+          ## 📊 Build Information
+          
+          - **Latest Release:** [\`${LATEST_RELEASE}\`](${REPO_URL}/releases/latest)
+          - **Last Updated:** $(date +'%B %d, %Y at %H:%M UTC')
+          - **Auto-compiled:** ✅ Yes, on every push to main
+          
+          ## 🛠️ Technical Details
+          
+          ### Structure
+          \`\`\`
+          /
+          $(for dir in $RESUME_DIRS; do echo "├── ${dir}/          # ${dir^} resume variant"; done)
+          ├── common/         # Shared LaTeX components
+          └── README.md       # This file (auto-generated)
+          \`\`\`
+          
+          ### Compilation
+          - **Engine:** LaTeX (latexmk with pdflatex)
+          - **CI/CD:** GitHub Actions
+          - **Distribution:** Releases are created automatically on every push
+          
+          ### How It Works
+          1. Push changes to \`main\` branch
+          2. GitHub Actions compiles all LaTeX files
+          3. PDFs are committed back to repository
+          4. A new release is created with downloadable PDFs
+          5. This README is automatically updated
+          
+          ## 📥 Download Options
+          
+          ### Latest Release (Recommended)
+          Download the most recent compiled versions from the [latest release](${REPO_URL}/releases/latest).
+          
+          ### Direct from Repository
+          $(for dir in $RESUME_DIRS; do
+            echo "- [\`${dir}-resume.pdf\`](./${dir}/${dir}-resume.pdf)"
+          done)
+          
+          ### All Releases
+          Browse all previous versions in the [releases page](${REPO_URL}/releases).
+          
+          ---
+          
+          <div align="center">
+          
+          **⭐ Star this repo if you find it useful!**
+          
+          ![Build Status](https://img.shields.io/github/actions/workflow/status/${{ github.repository }}/compile-resumes.yml?branch=main&style=flat-square)
+          ![Latest Release](https://img.shields.io/github/v/release/${{ github.repository }}?style=flat-square)
+          ![Last Commit](https://img.shields.io/github/last-commit/${{ github.repository }}?style=flat-square)
+          
+          </div>
+          EOF
+          
+          echo "✅ README.md generated successfully"
+          
+      - name: Commit and push README
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          
+          git add README.md
+          
+          if git diff --staged --quiet; then
+            echo "No changes to README.md"
+          else
+            git commit -m "docs: auto-update README with latest release info [skip ci]"
+            git push
+          fi
