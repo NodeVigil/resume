@@ -19,42 +19,54 @@ jobs:
         with:
           fetch-depth: 0  # Full history for proper commits
       
-      - name: Compile LaTeX documents
+      - name: Compile Frontend Resume
         uses: xu-cheng/latex-action@v3
         with:
-          working_directory: resumes
-          root_file: |
-            frontend/main.tex
-            backend/main.tex
-            fullstack/main.tex
+          working_directory: frontend
+          root_file: main.tex
+          args: -pdf -file-line-error -halt-on-error -interaction=nonstopmode
+          compiler: latexmk
+          
+      - name: Compile Backend Resume
+        uses: xu-cheng/latex-action@v3
+        with:
+          working_directory: backend
+          root_file: main.tex
+          args: -pdf -file-line-error -halt-on-error -interaction=nonstopmode
+          compiler: latexmk
+          
+      - name: Compile Fullstack Resume
+        uses: xu-cheng/latex-action@v3
+        with:
+          working_directory: fullstack
+          root_file: main.tex
           args: -pdf -file-line-error -halt-on-error -interaction=nonstopmode
           compiler: latexmk
           
       - name: Organize PDFs
         run: |
-          cd resumes
-          # Move PDFs to their respective directories with descriptive names
-          mv frontend/main.pdf frontend/frontend-resume.pdf
-          mv backend/main.pdf backend/backend-resume.pdf
-          mv fullstack/main.pdf fullstack/fullstack-resume.pdf
+          # Rename PDFs to descriptive names
+          cp frontend/main.pdf frontend/frontend-resume.pdf
+          cp backend/main.pdf backend/backend-resume.pdf
+          cp fullstack/main.pdf fullstack/fullstack-resume.pdf
           
       - name: Upload PDFs as artifacts
         uses: actions/upload-artifact@v4
         with:
           name: compiled-resumes
           path: |
-            resumes/frontend/frontend-resume.pdf
-            resumes/backend/backend-resume.pdf
-            resumes/fullstack/fullstack-resume.pdf
+            frontend/frontend-resume.pdf
+            backend/backend-resume.pdf
+            fullstack/fullstack-resume.pdf
           retention-days: 90
           
       - name: Commit and push PDFs to repository
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          git add resumes/frontend/frontend-resume.pdf
-          git add resumes/backend/backend-resume.pdf
-          git add resumes/fullstack/fullstack-resume.pdf
+          git add frontend/frontend-resume.pdf
+          git add backend/backend-resume.pdf
+          git add fullstack/fullstack-resume.pdf
           
           # Only commit if there are changes
           if git diff --staged --quiet; then
@@ -84,9 +96,9 @@ jobs:
             - Backend Resume  
             - Fullstack Resume
           files: |
-            resumes/frontend/frontend-resume.pdf
-            resumes/backend/backend-resume.pdf
-            resumes/fullstack/fullstack-resume.pdf
+            frontend/frontend-resume.pdf
+            backend/backend-resume.pdf
+            fullstack/fullstack-resume.pdf
           draft: false
           prerelease: false
         env:
