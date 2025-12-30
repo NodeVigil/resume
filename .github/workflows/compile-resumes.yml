@@ -4,10 +4,10 @@ on:
   push:
     branches:
       - main
-  workflow_dispatch:  # Allows manual trigger
+  workflow_dispatch:
 
 permissions:
-  contents: write  # Required for committing PDFs back to repo
+  contents: write
   
 jobs:
   compile-resumes:
@@ -17,58 +17,83 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Full history for proper commits
+          fetch-depth: 0
       
-      - name: Compile Frontend Resume
-        uses: xu-cheng/latex-action@v3
-        with:
-          working_directory: frontend
-          root_file: main.tex
-          args: -pdf -file-line-error -halt-on-error -interaction=nonstopmode
-          compiler: latexmk
-          
-      - name: Compile Backend Resume
-        uses: xu-cheng/latex-action@v3
-        with:
-          working_directory: backend
-          root_file: main.tex
-          args: -pdf -file-line-error -halt-on-error -interaction=nonstopmode
-          compiler: latexmk
-          
-      - name: Compile Fullstack Resume
-        uses: xu-cheng/latex-action@v3
-        with:
-          working_directory: fullstack
-          root_file: main.tex
-          args: -pdf -file-line-error -halt-on-error -interaction=nonstopmode
-          compiler: latexmk
-          
-      - name: Organize PDFs
+      - name: Find resume directories
+        id: find_dirs
         run: |
-          # Rename PDFs to descriptive names
-          cp frontend/main.pdf frontend/frontend-resume.pdf
-          cp backend/main.pdf backend/backend-resume.pdf
-          cp fullstack/main.pdf fullstack/fullstack-resume.pdf
+          # Find all directories containing main.tex (excluding common/)
+          RESUME_DIRS=$(find . -maxdepth 1 -type d -name "*" ! -name "." ! -name ".." ! -name ".git" ! -name "common" ! -name ".github" -exec test -f "{}/main.tex" \; -print | sed 's|./||' | tr '\n' ' ')
+          
+          if [ -z "$RESUME_DIRS" ]; then
+            echo "No resume directories found with main.tex"
+            exit 1
+          fi
+          
+          echo "Found resume directories: $RESUME_DIRS"
+          echo "dirs=$RESUME_DIRS" >> $GITHUB_OUTPUT
+          
+      - name: Compile LaTeX resumes
+        run: |
+          DIRS="${{ steps.find_dirs.outputs.dirs }}"
+          
+          for dir in $DIRS; do
+            echo "===================================="
+            echo "Compiling resume in: $dir"
+            echo "===================================="
+            
+            # Use Docker to compile LaTeX
+            docker run --rm \
+              -v "$(pwd):/workspace" \
+              -w "/workspace/$dir" \
+              ghcr.io/xu-cheng/texlive-full:latest \
+              latexmk -pdf -file-line-error -halt-on-error -interaction=nonstopmode main.tex
+            
+            # Check if PDF was generated
+            if [ -f "$dir/main.pdf" ]; then
+              echo "✓ Successfully compiled $dir/main.pdf"
+              # Create a copy with descriptive name
+              cp "$dir/main.pdf" "$dir/${dir}-resume.pdf"
+            else
+              echo "✗ Failed to compile $dir/main.pdf"
+              exit 1
+            fi
+          done
+          
+      - name: Prepare artifact list
+        id: prepare_artifacts
+        run: |
+          DIRS="${{ steps.find_dirs.outputs.dirs }}"
+          ARTIFACT_PATHS=""
+          
+          for dir in $DIRS; do
+            if [ -f "$dir/${dir}-resume.pdf" ]; then
+              ARTIFACT_PATHS="$ARTIFACT_PATHS$dir/${dir}-resume.pdf"$'\n'
+            fi
+          done
+          
+          echo "artifact_paths<<EOF" >> $GITHUB_OUTPUT
+          echo "$ARTIFACT_PATHS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
           
       - name: Upload PDFs as artifacts
         uses: actions/upload-artifact@v4
         with:
           name: compiled-resumes
           path: |
-            frontend/frontend-resume.pdf
-            backend/backend-resume.pdf
-            fullstack/fullstack-resume.pdf
+            */*-resume.pdf
           retention-days: 90
           
       - name: Commit and push PDFs to repository
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          git add frontend/frontend-resume.pdf
-          git add backend/backend-resume.pdf
-          git add fullstack/fullstack-resume.pdf
           
-          # Only commit if there are changes
+          DIRS="${{ steps.find_dirs.outputs.dirs }}"
+          for dir in $DIRS; do
+            git add "$dir/${dir}-resume.pdf" || true
+          done
+          
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
@@ -91,14 +116,10 @@ jobs:
             **Changes in this build:**
             ${{ github.event.head_commit.message }}
             
-            Download the PDFs below:
-            - Frontend Resume
-            - Backend Resume  
-            - Fullstack Resume
+            **Compiled resumes:**
+            ${{ steps.find_dirs.outputs.dirs }}
           files: |
-            frontend/frontend-resume.pdf
-            backend/backend-resume.pdf
-            fullstack/fullstack-resume.pdf
+            */*-resume.pdf
           draft: false
           prerelease: false
         env:
